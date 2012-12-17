@@ -1,0 +1,74 @@
+#!/bin/bash
+#
+# EC2 metadata self server regitration
+#
+# chkconfig: 2345 60 60
+# description: self server registration script to manage & list current running EC2 instances
+#
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+lockfile=/var/lock/subsys/self-server-registration
+srcdir=/opt/self-server-registration
+endpoint=http://169.254.169.254/latest/meta-data
+
+get_meta_data() {
+    ID=`curl -s ${endpoint}/instance-id`
+    TYPE=`curl -s ${endpoint}/instance-type`
+    AZ=`curl -s ${endpoint}/placement/availability-zone`
+    DNSNAME=`curl -s ${endpoint}/public-hostname`
+    IP=`curl -s ${endpoint}/local-ipv4`
+}
+
+start() {
+    if [ ! -f ${srcdir}/config.php ]; then
+        echo "${srcdir}/config.php does NOT exist."
+        failure
+    fi
+    echo
+
+    if [ -x ${srcdir}/add-server.php ]; then
+        echo -n $"Running: add-server.php "
+        ${srcdir}/add-server.php $ID $TYPE $AZ $DNSNAME $IP 'running' && success || failure
+        echo
+    fi
+    touch ${lockfile}
+}
+
+stop () {
+    if [ ! -f ${srcdir}/config.php ]; then
+        echo "${srcdir}/config.php does NOT exist."
+        failure
+    fi
+
+    echo
+    if [ -x ${srcdir}/delete-server.php ]; then
+        echo -n $"Running: delete-server.php "
+        ${srcdir}/delete-server.php $ID && success
+        echo
+    fi
+    rm -f ${lockfile}
+}
+
+case "$1" in
+    start)
+        get_meta_data
+        start
+        ;;
+    stop)
+        get_meta_data
+        stop
+        ;;
+    restart)
+        get_meta_data
+        stop
+        start
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart}"
+        RETVAL=1
+esac
+exit $RETVAL
+
